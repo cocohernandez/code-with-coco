@@ -1,29 +1,26 @@
-# --- secrets, never commit ---
-.env
-.env.local
-*.token
-secrets.json
-
-# --- analytics outputs (personal data) ---
-posts_*.csv
-*.csv
-output/
-data/
-sync.log
-
-# --- python ---
+# Python
 __pycache__/
-*.py[cod]
-*$py.class
-.venv/
+*.pyc
 venv/
-env/
-.python-version
+.venv/
 
-# --- mac ---
-.DS_Store
+# Transcript output
+*.txt
+*.json
+!requirements.txt
 
-# --- editor ---
-.vscode/
-.idea/
-*.swp
+# Media / test footage
+*.MOV
+*.mov
+*.mp4
+*.m4a
+*.wav
+
+# Local archive + scheduler logs
+archive.db
+*.log
+
+# Never commit credentials
+.env
+.aws/
+credentials

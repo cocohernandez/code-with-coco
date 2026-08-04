@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.coco.contentmanager</string>
+
+    <!-- The venv python, so boto3 is importable. -u keeps the log unbuffered. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/athenahernandez/Documents/code-with-coco/content-manager/venv/bin/python</string>
+        <string>-u</string>
+        <string>/Users/athenahernandez/Documents/code-with-coco/content-manager/manager.py</string>
+        <string>ingest</string>
+        <string>/Users/athenahernandez/Desktop/ContentDrop</string>
+    </array>
+
+    <!-- Run from the project so `import transcribe` resolves. -->
+    <key>WorkingDirectory</key>
+    <string>/Users/athenahernandez/Documents/code-with-coco/content-manager</string>
+
+    <!-- Every day at 9:00am. If the Mac is asleep, it runs on wake. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Don't fire the moment it's loaded; wait for the scheduled time. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- launchd starts with a bare environment; boto3 needs HOME to find ~/.aws. -->
+        <key>HOME</key>
+        <string>/Users/athenahernandez</string>
+        <key>AWS_REGION</key>
+        <string>us-east-1</string>
+        <key>LANG</key>
+        <string>en_US.UTF-8</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/athenahernandez/Documents/code-with-coco/content-manager/contentmanager.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/athenahernandez/Documents/code-with-coco/content-manager/contentmanager.log</string>
+</dict>
+</plist>

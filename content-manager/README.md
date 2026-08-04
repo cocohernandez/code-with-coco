@@ -2,160 +2,252 @@
 <img src="../assets/readme_background.png" alt="code with coco" />
 </div>
 
-# <img src="../assets/improvement.svg" height="48" style="vertical-align: middle;" /> &nbsp; content manager
+# <img src="../assets/text_bubble.svg" height="48" style="vertical-align: middle;" /> &nbsp; content archive
 
-ever wish you could just download your instagram analytics into a spreadsheet? every "analytics tool" wants $30/month to show you numbers meta already has. so i built a tiny python script that pulls your own data directly from the instagram graph api and spits out a csv. no third-party tools, no monthly fees, just your data.
+i have hundreds of videos on this laptop and no idea what i said in any of them. "wasn't there a clip where i talked about imposter syndrome?" — cool, enjoy scrubbing through 200 files to find it. so i built a thing that transcribes every video i drop in a folder and shoves the text into a tiny local database. now i just search for a phrase and it tells me which clip, what day, and the exact sentence around it. runs itself every morning. costs about two cents a video.
 
-## <img src="../assets/info.png" height="36" style="vertical-align: middle;" /> &nbsp; what it does
+## <img src="../assets/light.svg" height="36" style="vertical-align: middle;" /> &nbsp; what it does
 
-reads the last 90 days of your instagram posts and pulls per-post insights — reach, views, saves, shares, likes, comments. outputs a csv you can import into notion, google sheets, or whatever you want.
+drop clips into a folder → amazon transcribe turns them into text → everything lands in `archive.db` (a single sqlite file, no database server, comes free with python) → you search it instantly.
 
-includes two derived metrics: `save_rate` and `share_rate` (saves/shares divided by reach). these matter more than raw views — they tell you what people actually wanted to keep or send.
+it only pays for files it hasn't seen before, so re-running is free and safe. and it runs on a schedule, so the archive builds itself while you sleep.
+
+two files:
+- `transcribe.py` — does one video at a time (or a whole folder). this is the aws part.
+- `manager.py` — the daily brain. scans, skips what's done, saves to the database, searches it.
 
 ## <img src="../assets/wrench.png" height="36" style="vertical-align: middle;" /> &nbsp; tutorial
 
-### <img src="../assets/one.png" height="24" style="vertical-align: middle;" /> &nbsp; get your ig business account id + long-lived token
+### <img src="../assets/one.png" height="24" style="vertical-align: middle;" /> &nbsp; get your aws credentials
 
-you need an instagram business or creator account (personal accounts can't use the api), a facebook page linked to your ig, and a meta developer app.
+amazon transcribe doesn't use a simple api key — it uses **aws iam credentials**, an access key id + secret access key.
 
-if you already have your account id and token from another project, skip to step 2. otherwise:
+1. sign in to the [aws console](https://console.aws.amazon.com/) → search **iam**
+2. **users** → create user (don't use root!). name it something like `transcribe-cli`
+3. **uncheck** "provide user access to the console" — this user only needs a key
+4. permissions → **attach policies directly** → **create inline policy** → json → paste this:
 
-1. go to [developers.facebook.com](https://developers.facebook.com) → create a new app → use case: "other" → type: "business"
-2. add the instagram graph api product
-3. open graph api explorer (under tools)
-4. select your app → generate access token → grant these permissions:
-   - `instagram_basic`
-   - `instagram_manage_insights`
-   - `pages_show_list`
-   - `pages_read_engagement`
-5. find your ig business account id by running this in the api explorer:
-   ```
-   GET /me/accounts?fields=name,instagram_business_account
-   ```
-6. exchange your short-lived token for a long-lived one (60 day expiry):
-   ```
-   GET /oauth/access_token?
-     grant_type=fb_exchange_token
-     &client_id=YOUR_APP_ID
-     &client_secret=YOUR_APP_SECRET
-     &fb_exchange_token=YOUR_SHORT_TOKEN
-   ```
-
-save both values somewhere safe. **not in this repo.**
-
-### <img src="../assets/two.png" height="24" style="vertical-align: middle;" /> &nbsp; clone and configure
-
-```bash
-git clone https://github.com/cocohernandez/code-with-coco.git
-cd code-with-coco/content-manager
-cp .env.example .env
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["transcribe:StartTranscriptionJob", "transcribe:GetTranscriptionJob"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
 ```
 
-open `.env` in your editor, paste in your ig business account id + long-lived token. `.env` is gitignored so it won't be committed.
+5. once the user exists → **security credentials** → **create access key** → "command line interface (cli)"
+6. copy both values. **the secret only shows once.**
 
-### <img src="../assets/three.png" height="24" style="vertical-align: middle;" /> &nbsp; run the scripts
+> a brand new iam user has *zero* permissions until you attach that policy — it's not that it starts open and you lock it down, it starts fully closed.
+
+### <img src="../assets/two.png" height="24" style="vertical-align: middle;" /> &nbsp; tell your mac about them
+
+make the folder aws looks in, and drop your keys there:
 
 ```bash
-python3 test_token.py        # 5-second sanity check
-python3 pull_ig_analytics.py # full pull
+mkdir -p ~/.aws
 ```
 
-the first script verifies your token works. the second one pulls all your data and outputs `posts_YYYY-MM-DD.csv`.
+create `~/.aws/credentials`:
+
+```ini
+[default]
+aws_access_key_id = AKIA...your key...
+aws_secret_access_key = ...your secret...
+```
+
+and `~/.aws/config`:
+
+```ini
+[default]
+region = us-east-1
+output = json
+```
+
+then lock them down so only you can read them:
+
+```bash
+chmod 600 ~/.aws/credentials ~/.aws/config
+```
+
+these live in your home folder, **not in this repo**, so there's no way to accidentally commit them.
+
+### <img src="../assets/three.png" height="24" style="vertical-align: middle;" /> &nbsp; install + test one video
+
+```bash
+cd content-manager
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+check your keys actually work:
+
+```bash
+python -c "import boto3; print(boto3.client('sts').get_caller_identity())"
+```
+
+that should print your account id. if it says `InvalidClientTokenId` you fat-fingered the key, `SignatureDoesNotMatch` means the secret. then transcribe something:
+
+```bash
+python transcribe.py my_video.mov
+```
+
+it uploads to s3, runs the job, and drops `my_video.txt` + `my_video.json` next to you. the `.json` has word-level timestamps and confidence scores if you ever want them.
+
+> **`SubscriptionRequiredException`?** your aws account isn't fully activated yet — usually a missing payment method. check billing → payment methods, then wait a bit. brand new accounts can take a few hours.
+
+### <img src="../assets/four.png" height="24" style="vertical-align: middle;" /> &nbsp; build the archive
+
+make the drop folder and throw some clips in it:
+
+```bash
+mkdir -p ~/Desktop/ContentDrop
+python manager.py ingest ~/Desktop/ContentDrop
+```
+
+```
+Found 2 new files
+Transcribing clip_042.mov...
+Indexed clip_042.mov
+Transcribing clip_043.mov...
+Indexed clip_043.mov
+
+Done. Indexed 2 of 2 new file(s) into archive.db
+```
+
+run it again and it does nothing, because it already knows those files:
+
+```
+Found 0 new files (2 already indexed)
+```
 
 *that's it! you're done!!!!!!!!!!*
 
-## <img src="../assets/sync.png" height="36" style="vertical-align: middle;" /> &nbsp; notion sync (optional)
+## <img src="../assets/cocos_terminal.png" height="36" style="vertical-align: middle;" /> &nbsp; searching your own footage
 
-want your analytics automatically pushed to notion every day? here's how:
-
-### <img src="../assets/one.png" height="24" style="vertical-align: middle;" /> &nbsp; create notion integration
-
-1. go to [notion.so/my-integrations](https://www.notion.so/my-integrations)
-2. click "new integration"
-3. name it (e.g., "instagram analytics")
-4. copy the integration token (starts with `secret_` or `ntn_`)
-5. add to your `.env`:
-   ```bash
-   NOTION_TOKEN=your_token_here
-   ```
-
-### <img src="../assets/two.png" height="24" style="vertical-align: middle;" /> &nbsp; set up database
+this is the whole point:
 
 ```bash
-python3 setup_notion_database.py
+python manager.py search "imposter syndrome"
 ```
 
-this creates a fresh notion database with all the right columns. copy the database id it prints and add it to your `.env`:
+```
+2 videos mention 'imposter syndrome':
+
+  clip_042.mov   2026-08-04   1m12s   3 mentions
+    ...everyone at stanford has imposter syndrome and nobody talks about it until...
+
+  clip_071.mov   2026-07-22   0m48s   1 mention
+    ...i thought imposter syndrome would go away after the internship but...
+```
+
+case-insensitive, matches anywhere in the transcript, and the match gets highlighted in your terminal. see everything you've archived with:
 
 ```bash
-NOTION_DATABASE_ID=your_database_id_here
+python manager.py list
 ```
 
-### <img src="../assets/three.png" height="24" style="vertical-align: middle;" /> &nbsp; test the sync
+## <img src="../assets/gcal.png" height="36" style="vertical-align: middle;" /> &nbsp; run it every day
+
+macos has a built-in scheduler called `launchd`. the plist in this repo tells it to run `ingest` on `~/Desktop/ContentDrop` every morning at 9am.
+
+### <img src="../assets/one.png" height="24" style="vertical-align: middle;" /> &nbsp; check the paths
+
+open `com.coco.contentmanager.plist` and make sure the paths match where you actually put this folder. every path has to be **absolute** — `~` does not work in a plist.
+
+### <img src="../assets/two.png" height="24" style="vertical-align: middle;" /> &nbsp; install it
 
 ```bash
-python3 sync_to_notion.py
+cp com.coco.contentmanager.plist ~/Library/LaunchAgents/
+launchctl load -w ~/Library/LaunchAgents/com.coco.contentmanager.plist
 ```
 
-this pulls your instagram data and pushes it directly to notion. check your notion database to see all your posts with full analytics.
+confirm it registered:
 
-### <img src="../assets/four.png" height="24" style="vertical-align: middle;" /> &nbsp; automate daily sync (optional)
+```bash
+launchctl list | grep contentmanager
+```
 
-the cron job is already set up to run at 3:30 AM PST every day! it syncs your posts after they've had 24 hours to collect engagement, so you wake up to fresh analytics each morning.
+### <img src="../assets/three.png" height="24" style="vertical-align: middle;" /> &nbsp; give it permission to see your desktop
 
-check the logs: `tail -f sync.log`
+macos blocks background jobs from reading `~/Desktop` unless you allow it. go to **system settings → privacy & security → full disk access**, hit **+**, press `⌘ + shift + G`, and paste:
 
-to disable: `crontab -e` and comment out or delete the instagram analytics line.
+```
+/Users/athenahernandez/Documents/code-with-coco/content-manager/venv/bin/
+```
 
-## <img src="../assets/chart.png" height="36" style="vertical-align: middle;" /> &nbsp; what's in the csv
+pick `python3.13` and toggle it on. skip this and your log will just say "operation not permitted" every morning.
+
+### <img src="../assets/four.png" height="24" style="vertical-align: middle;" /> &nbsp; watch it work
+
+it's silent when it fires, so the log is how you know:
+
+```bash
+tail -f contentmanager.log
+```
+
+force a run right now without waiting for 9am:
+
+```bash
+launchctl start com.coco.contentmanager
+```
+
+to change the time, edit `StartCalendarInterval` in the plist, then unload and reload it. to turn it off entirely:
+
+```bash
+launchctl unload -w ~/Library/LaunchAgents/com.coco.contentmanager.plist
+```
+
+## <img src="../assets/folder.png" height="36" style="vertical-align: middle;" /> &nbsp; what's in the database
+
+one row per video, in `archive.db`:
 
 | column | what it is |
 |---|---|
-| `media_id` | unique post id |
-| `posted_at` | iso timestamp |
-| `media_type` | image / video / carousel |
-| `format` | feed / reels / story |
-| `permalink` | direct link |
-| `caption_preview` | first 200 chars |
-| `caption_length` | full char count |
-| `reach` | unique accounts that saw it |
-| `views` | total plays (reels only) |
-| `likes`, `comments`, `saved`, `shares` | the standard stuff |
-| `total_interactions` | sum of all engagement |
-| `save_rate` | saved / reach |
-| `share_rate` | shares / reach |
+| `filename` | just the name, e.g. `clip_042.mov` — this is what makes re-runs free |
+| `filepath` | full path so you can find the actual video |
+| `transcript` | the whole thing as plain text |
+| `date_added` | when it got archived |
+| `duration` | length in seconds, pulled from the last spoken word |
 
-## <img src="../assets/test.png" height="36" style="vertical-align: middle;" /> &nbsp; content strategy tracking
+it's a normal sqlite file, so you can open it in any sqlite browser, or poke at it directly:
 
-if you're using notion sync, your database includes optional tracking fields to help you figure out what works. manually fill these in for each post to identify patterns:
+```bash
+sqlite3 archive.db "SELECT filename, duration FROM transcripts ORDER BY duration DESC LIMIT 5"
+```
 
-**tracking fields:**
-- **hook type** (text) - how you opened ("question", "POV", "bold statement", "tutorial intro", etc.)
-- **style** (select) - video style (talking head, b-roll, text overlay, tutorial, POV, voiceover, mixed)
-- **lighting** (select) - lighting setup (natural, ring light, studio, mixed)
-- **time category** (select) - when you posted (morning, afternoon, evening, night)
-- **content topic** (multi-select) - tag your topics (tech, stanford, coding, life, tutorial, behind the scenes)
-- **notes** (text) - anything you noticed while filming or posting
+## <img src="../assets/smiley.png" height="36" style="vertical-align: middle;" /> &nbsp; the fine print
 
-**how to use this:**
+**formats:** `.mov`, `.mp4`, `.m4a`, `.wav`, `.mp3`. iphone `.mov` files work — they're really mp4 containers underneath, so the script tells transcribe to treat them that way.
 
-after a few weeks of tracking, filter and sort your notion database to find patterns:
-- which hooks get the highest save rate?
-- does lighting affect engagement?
-- what time category performs best for your audience?
-- which topics drive the most shares?
+**cost:** transcribe is about $0.024/minute. a 1-minute reel is ~2 cents, so a hundred of them is a couple bucks. s3 storage for the uploads is pennies.
 
-sort by `save_rate` or `share_rate` descending, then look for commonalities in your top performers. this is how you build a data-driven content strategy instead of guessing.
+**your videos get uploaded to s3** and stay there. clean them out occasionally:
 
-## <img src="../assets/clock.png" height="36" style="vertical-align: middle;" /> &nbsp; token refresh
+```bash
+aws s3 ls s3://your-bucket-name/input/
+```
 
-meta long-lived tokens expire every 60 days. set a calendar reminder. when it's about to expire, repeat step 6 from the tutorial with your current token (before it dies) to get a fresh 60 days.
+(needs `brew install awscli`, and you'd have to add `s3:DeleteObject` to the policy above to actually delete them.)
 
-## <img src="../assets/lock.png" height="36" style="vertical-align: middle;" /> &nbsp; security
-
-- never commit your `.env` file
-- never paste your token anywhere public (github, discord, screenshots)
-- if you accidentally leak it, revoke immediately at [developers.facebook.com](https://developers.facebook.com) → your app → app review → revoke token, then regenerate
+**it skips by filename, not content.** two different videos both named `IMG_1234.mov` will look like the same file, so rename before dropping them in.
 
 ## <img src="../assets/star.png" height="36" style="vertical-align: middle;" /> &nbsp; episode
 - coming soon!
