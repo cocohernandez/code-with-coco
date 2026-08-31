@@ -4,7 +4,7 @@
 
 # <img src="../assets/instagram.png" height="48" style="vertical-align: middle;" /> &nbsp; ig unfollows
 
-ever wonder who unfollowed you? instagram conveniently doesn't tell you when someone hits the unfollow button. so i wrote a tiny script that runs in your browser and tells you exactly which accounts you follow that don't follow you back. no apps to install, no third-party logins, no shady "track your unfollowers" services that mine your data.
+ever wonder who unfollowed you? instagram conveniently doesn't tell you when someone hits the unfollow button. so i wrote a tiny script that runs in your browser and tells you exactly which accounts you follow that don't follow you back. no apps to install, no third-party logins, no shady "track your unfollowers" services that mine your data. 
 
 <div align="center">
 <img src="../assets/ig_unfollows.png" width="350" style="vertical-align: middle;" />

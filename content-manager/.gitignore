@@ -18,7 +18,17 @@ venv/
 
 # Local archive + scheduler logs
 archive.db
+archive.html
 *.log
+
+# Licensed font -- embedded into archive.html at build time, never committed
+TAYBang.woff2
+
+# Cached poster frames pulled from your own footage
+thumbs/
+
+# Browser-playable copies made by avconvert
+web/
 
 # Never commit credentials
 .env

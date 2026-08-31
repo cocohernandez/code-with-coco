@@ -164,6 +164,53 @@ case-insensitive, matches anywhere in the transcript, and the match gets highlig
 python manager.py list
 ```
 
+## <img src="../assets/text_bubble.svg" height="36" style="vertical-align: middle;" /> &nbsp; the pretty version
+
+the terminal is great but not everyone wants to look at a terminal. so there's a web version too:
+
+```bash
+python manager.py dashboard --open
+```
+
+that builds `archive.html` and pops it open in your browser. type in the search box and it filters every clip live, with the matches highlighted — hit *read transcript* on any card to peel the whole thing open.
+
+each card gets a **thumbnail pulled straight out of the video**, three to a row, so you're looking at your footage instead of a wall of filenames. it grabs the frame with quicklook and shrinks it with sips — both already on your mac, nothing to install. frames get cached in `thumbs/`, so the first build is slow-ish and every one after is instant.
+
+### picking a better cover
+
+sometimes the frame a video opens on is a blink, or a black frame, or you mid-syllable. so you can say which second to grab instead — edit `COVER_AT` at the top of `dashboard.py`:
+
+```python
+COVER_AT = {
+    "reel2.MOV": 2.0,   # two seconds in
+}
+```
+
+that one uses `framegrab.swift`, a tiny avfoundation script that seeks to an exact timestamp. swift comes with the xcode command line tools; if you don't have them it quietly falls back to the poster frame. the cache is keyed on the timestamp, so changing the number re-cuts the cover on the next build.
+
+to find a good moment, grab a few frames yourself and look at them:
+
+```bash
+swift framegrab.swift reel2.MOV 4.5 test.png
+```
+
+the transcripts, the styling, the search, the fonts and the thumbnails are all baked into `archive.html` itself. no server running, no internet needed. rebuild it whenever you add new clips:
+
+```bash
+python manager.py dashboard
+```
+
+### <img src="../assets/light.svg" height="28" style="vertical-align: middle;" /> &nbsp; play it back, follow along
+
+hit the play button on any cover and the clip opens with its transcript beside it, **lighting up word by word as you talk**. click any word to jump the video to that exact second.
+
+that works because amazon transcribe returns a timestamp for every single word, not just the finished paragraph — `manager.py` stashes those in the `timings` column and the page reads them back. searching first? the words you searched for stay highlighted inside the player.
+
+two things happen the first time you build this:
+
+- iphone records in **hevc**, which chrome on mac only sometimes decodes. so `avconvert` (already on your mac) makes a 720p h.264 copy of each clip in `web/`. takes about 10 seconds a clip, then it's cached.
+- those copies are far too big to inline, so `archive.html` **links** to them. the page still opens straight off disk, but if you move it, bring `web/` along or you'll get the transcript with a dead player.
+
 ## <img src="../assets/gcal.png" height="36" style="vertical-align: middle;" /> &nbsp; run it every day
 
 macos has a built-in scheduler called `launchd`. the plist in this repo tells it to run `ingest` on `~/Desktop/ContentDrop` every morning at 9am.
