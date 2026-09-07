@@ -1,0 +1,29 @@
+# secrets
+.env
+.env.local
+*.token
+secrets.json
+
+# analytics outputs
+posts_*.csv
+*.csv
+output/
+data/
+sync.log
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.python-version
+
+# editor
+.vscode/
+.idea/
+*.swp
+
+# mac
+.DS_Store
