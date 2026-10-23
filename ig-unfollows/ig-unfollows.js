@@ -62,7 +62,9 @@ const fetchAllPages = async (list, userId) => {
     const params = new URLSearchParams({ count: PAGE_SIZE });
     if (nextMaxId) params.set("max_id", nextMaxId);
     const url = `https://www.instagram.com/api/v1/friendships/${userId}/${list}/?${params}`;
-    const data = await fetch(url, fetchOptions).then((r) => r.json());
+    const res = await fetch(url, fetchOptions);
+    if (!res.ok) throw new Error(`${list} request failed: ${res.status}`);
+    const data = await res.json();
     users.push(...data.users);
     if (!data.next_max_id) return users;
     nextMaxId = data.next_max_id;
@@ -70,16 +72,12 @@ const fetchAllPages = async (list, userId) => {
   }
 };
 
-const getUserId = async (username) => {
-  const lower = username.toLowerCase();
-  const url = `https://www.instagram.com/api/v1/web/search/topsearch/?context=blended&query=${lower}&include_reel=false`;
-  const data = await fetch(url, fetchOptions).then((r) => r.json());
-  return data.users?.find((r) => r.user.username.toLowerCase() === lower)?.user?.pk;
-};
+// reads your own user ID from the login cookie instead of using the search endpoint
+const getUserId = async () => document.cookie.match(/ds_user_id=(\d+)/)?.[1];
 
 const findUnfollowers = async (username) => {
-  const userId = await getUserId(username);
-  if (!userId) throw new Error(`couldn't find @${username}`);
+  const userId = await getUserId();
+  if (!userId) throw new Error("couldn't find your user ID — make sure you're logged in on instagram.com");
 
   console.log(`%cfetching followers + following for @${username} in parallel...`, "color:#ff7ad9;font-weight:bold");
   const t0 = performance.now();
@@ -102,6 +100,6 @@ const findUnfollowers = async (username) => {
   return dontFollowBack;
 };
 
-// TODO: change this to your username 
-yourUsername = "placeholder"     // keep the quotes around it
+// TODO: change this to your username
+const yourUsername = "placeholder";     // keep the quotes around it
 findUnfollowers(yourUsername);
